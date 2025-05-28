@@ -1,21 +1,17 @@
 # app/__init__.py
-from flask import Flask, current_app # Added current_app for logging example
+from flask import Flask, current_app, jsonify # Ensure current_app is imported if used in routes
 from config import Config
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_cors import CORS
-import os # Ensure os is imported
+import os
 
 db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
-# login_manager.login_view = 'auth.login' # Points to the login route in 'auth' blueprint
-# We are building an API, so login_view might not be used in the same way as a traditional web app.
-# For API, frontend handles redirects. If session cookie is not valid, API returns 401.
-login_manager.session_protection = "strong" # Good for security
-login_manager.login_message_category = 'info'
-
+login_manager.session_protection = "strong"
+# login_manager.login_view = 'auth.login' # Not strictly needed for pure API if frontend handles 401s
 
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=True)
@@ -29,28 +25,24 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
-    # Configure CORS to allow credentials (cookies) from your frontend domain
-    # Replace 'http://localhost:3000' with your actual frontend dev URL or deployed URL
-    CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://localhost:3000"]) # Add your frontend origins
+    # Adjust origins as needed for your new commercial frontend
+    CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:5174"]) # Example new port
 
     # Register Blueprints
-    from app.routes import auth_bp # Import the auth blueprint
+    from app.routes import auth_bp 
     app.register_blueprint(auth_bp)
 
-    # If you have other general API routes, create another blueprint for them
-    # e.g., from app.api_routes import api_bp
-    # app.register_blueprint(api_bp, url_prefix='/api/v1')
-
+    from app.routes import leads_bp # IMPORT AND REGISTER THE LEADS BLUEPRINT
+    app.register_blueprint(leads_bp) 
 
     @app.route('/test/')
     def test_page():
         return '<h1>Testing the Flask Application Factory!</h1>'
     
-    @app.route('/') # Optional root route for basic status
+    @app.route('/')
     def index():
-        return jsonify(status="LeadDawg Pro Backend is Alive and Kicking!",
-                       version="0.1.0-auth-setup")
+        return jsonify(status="LeadDawg Pro Backend is Alive and Kicking!", version="0.1.1-leads-setup")
 
     return app
 
-from app import models # Important: Keep this at the bottom
+from app import models
