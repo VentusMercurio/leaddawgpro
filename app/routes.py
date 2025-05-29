@@ -13,6 +13,7 @@ import os
 # --- Authentication Blueprint ---
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
+# ... (All your existing @auth_bp routes - register, login, logout, status - NO CHANGES HERE) ...
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -61,9 +62,11 @@ def logout():
 def status():
     return jsonify(logged_in=True, user={'id': current_user.id, 'username': current_user.username, 'email': current_user.email}), 200
 
+
 # --- Leads Blueprint ---
 leads_bp = Blueprint('leads', __name__, url_prefix='/api/leads')
 
+# ... (All your existing @leads_bp routes - save_new_lead, get_saved_leads, update_saved_lead, delete_saved_lead - NO CHANGES HERE) ...
 @leads_bp.route('', methods=['POST'])
 @login_required 
 def save_new_lead():
@@ -131,24 +134,21 @@ def delete_saved_lead(lead_id):
         current_app.logger.error(f"Error deleting lead {lead_id}: {e}")
         return jsonify(message="Failed to delete lead due to an internal error"), 500
 
-# --- NEW SEARCH BLUEPRINT ---
+
+# --- SEARCH BLUEPRINT ---
 search_bp = Blueprint('search', __name__, url_prefix='/api/search')
 
-# Use a distinct environment variable name for this project's API key if desired
-# Or ensure GOOGLE_PLACES_API_KEY is set correctly for this project's environment
 GOOGLE_PLACES_API_KEY_FOR_PRO = os.getenv("GOOGLE_PLACES_API_KEY_PRO") 
 PLACES_API_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 PLACE_DETAILS_API_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
 @search_bp.route('/places', methods=['GET'])
-# Add @login_required here if searching should be a protected action
-# For example: @login_required 
 def search_places_route():
     query = request.args.get('query')
     if not query:
         return jsonify(message="Missing 'query' parameter"), 400
 
-    if not GOOGLE_PLACES_API_KEY_FOR_PRO: # Check the correct env var name
+    if not GOOGLE_PLACES_API_KEY_FOR_PRO:
         current_app.logger.error("GOOGLE_PLACES_API_KEY_PRO not configured for search.")
         return jsonify(message="API key for places search not configured on server"), 500
 
@@ -159,47 +159,33 @@ def search_places_route():
 
     try:
         while current_page_count < max_pages:
+            # ... (Text Search pagination logic - NO CHANGES HERE) ...
             current_page_count += 1
-            api_params = {
-                "query": query,
-                "key": GOOGLE_PLACES_API_KEY_FOR_PRO, # Use the correct env var
-            }
+            api_params = { "query": query, "key": GOOGLE_PLACES_API_KEY_FOR_PRO }
             if next_page_token:
                 api_params["pagetoken"] = next_page_token
                 current_app.logger.info("Waiting 2s for next_page_token...")
                 time.sleep(2) 
-
             current_app.logger.info(f"Places Search (Page {current_page_count}) for query: {query}")
-            
             response = requests.get(PLACES_API_URL, params=api_params)
             response.raise_for_status()
             results_json = response.json()
-            
             current_app.logger.debug(f"API Response (Page {current_page_count}): {results_json.get('status')}")
-
             if results_json.get("status") == "OK":
                 all_raw_places_from_textsearch.extend(results_json.get("results", []))
                 next_page_token = results_json.get("next_page_token")
-                if not next_page_token:
-                    current_app.logger.info("No more pages.")
-                    break 
+                if not next_page_token: break 
             elif results_json.get("status") == "ZERO_RESULTS" and current_page_count == 1:
-                current_app.logger.info(f"ZERO_RESULTS for query: {query}")
                 return jsonify(status="ZERO_RESULTS", places=[]), 200
             elif results_json.get("status") != "OK":
                 error_msg = results_json.get('error_message', 'Unknown Google API error')
                 current_app.logger.error(f"Places API Error (Page {current_page_count}): {results_json.get('status')} - {error_msg}")
-                if not all_raw_places_from_textsearch:
-                     return jsonify(message=f"Google Places API error: {results_json.get('status')} - {error_msg}"), 500
-                else: 
-                    current_app.logger.warning("Error on subsequent page, proceeding with fetched results.")
-                    break 
-            else: break # Should not happen if previous status was OK
+                if not all_raw_places_from_textsearch: return jsonify(message=f"Google Places API error: {results_json.get('status')} - {error_msg}"), 500
+                else: break 
+            else: break
         
         if not all_raw_places_from_textsearch:
-             current_app.logger.info(f"No places found after pagination for query: {query}")
              return jsonify(status="ZERO_RESULTS", places=[]), 200
-
         current_app.logger.info(f"Total raw places: {len(all_raw_places_from_textsearch)}")
 
         detailed_places_list = []
@@ -211,21 +197,33 @@ def search_places_route():
 
             details_params = {
                 "place_id": place_id,
-                "fields": "name,formatted_address,website,formatted_phone_number,types,rating,user_ratings_total,business_status,opening_hours,url,place_id",
-                "key": GOOGLE_PLACES_API_KEY_FOR_PRO # Use the correct env var
+                "fields": "name,formatted_address,website,formatted_phone_number,types,rating,user_ratings_total,business_status,opening_hours,url,place_id,photos", # ADDED 'photos' to fields
+                "key": GOOGLE_PLACES_API_KEY_FOR_PRO
             }
             details_response = requests.get(PLACE_DETAILS_API_URL, params=details_params)
             details_result = details_response.json()
 
+            # ***** START OF MODIFICATION FOR PHOTO URL *****
             if details_result.get("status") == "OK" and "result" in details_result:
                 place_data = details_result["result"]
+                photo_url = None # Initialize photo_url as None
+                
+                # Check for photos and construct URL if available
+                if place_data.get("photos") and len(place_data["photos"]) > 0:
+                    photo_reference = place_data["photos"][0].get("photo_reference")
+                    if photo_reference:
+                        # Construct the photo URL. Maxwidth can be adjusted.
+                        # Frontend will use this URL directly in an <img> src or background-image.
+                        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={photo_reference}&key={GOOGLE_PLACES_API_KEY_FOR_PRO}"
+                
                 detailed_places_list.append({
                     "google_place_id": place_id,
                     "name": place_data.get("name"),
                     "address": place_data.get("formatted_address"),
                     "website": place_data.get("website"),
                     "phone_number": place_data.get("formatted_phone_number"),
-                    "email": None, # Explicitly None
+                    "photo_url": photo_url, # <<< ADDED THIS FIELD
+                    "email": None, 
                     "types": place_data.get("types", []),
                     "rating": place_data.get("rating"),
                     "user_ratings_total": place_data.get("user_ratings_total"),
@@ -233,13 +231,14 @@ def search_places_route():
                     "opening_hours": place_data.get("opening_hours", {}).get("weekday_text"),
                     "google_maps_url": place_data.get("url")
                 })
-            else:
+            # ***** END OF MODIFICATION FOR PHOTO URL *****
+            else: # Fallback if Place Details fetch failed
                 current_app.logger.warning(f"Failed Place Details for {place_id}: {details_result.get('status')}. Using basic info.")
                 detailed_places_list.append({
                     "google_place_id": place_id,
                     "name": basic_place_info.get("name", "Details Fetch Failed"),
                     "address": basic_place_info.get("formatted_address"),
-                    "website": None, "phone_number": None, "email": None,
+                    "website": None, "phone_number": None, "email": None, "photo_url": None, # Added photo_url: None
                     "types": basic_place_info.get("types", []),
                     "rating": basic_place_info.get("rating"),
                     "user_ratings_total": basic_place_info.get("user_ratings_total"),
