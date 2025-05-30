@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_cors import CORS
+import stripe
 import os
 
 db = SQLAlchemy()
@@ -15,6 +16,12 @@ login_manager.session_protection = "strong"
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
+     # Initialize Stripe API key
+    if app.config['STRIPE_SECRET_KEY']:
+        stripe.api_key = app.config['STRIPE_SECRET_KEY']
+    else:
+        app.logger.warning("STRIPE_SECRET_KEY not set. Stripe functionality will not work.")
+
 
     # Ensure the instance folder exists for SQLite
     try:

@@ -13,6 +13,10 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), index=True, unique=True, nullable=False)
     email = db.Column(db.String(120), index=True, unique=True, nullable=False)
     password_hash = db.Column(db.String(256))
+    tier = db.Column(db.String(50), default='free', nullable=False) # e.g., 'free', 'pro', 'agency'
+    stripe_customer_id = db.Column(db.String(120), unique=True, index=True, nullable=True)
+    stripe_subscription_id = db.Column(db.String(120), unique=True, index=True, nullable=True)
+    subscription_active_until = db.Column(db.DateTime, nullable=True)
     
     # Relationship to SavedLead (one-to-many: one User has many SavedLeads)
     saved_leads = db.relationship('SavedLead', backref='owner', lazy='dynamic')
