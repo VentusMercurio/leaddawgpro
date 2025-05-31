@@ -78,6 +78,7 @@ def save_new_lead():
     if existing_saved_lead: return jsonify(message="Lead already saved by this user", lead=existing_saved_lead.to_dict()), 409
     new_lead = SavedLead(
         place_id_google=google_place_id, name_at_save=name,
+        photo_url_google=data.get('photo_url'),
         address_at_save=data.get('address'), phone_at_save=data.get('phone'),
         website_at_save=data.get('website'), user_id=current_user.id,
         user_status=data.get('status', 'New')

@@ -13,13 +13,15 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), index=True, unique=True, nullable=False)
     email = db.Column(db.String(120), index=True, unique=True, nullable=False)
     password_hash = db.Column(db.String(256))
-    tier = db.Column(db.String(50), default='free', nullable=False) # e.g., 'free', 'pro', 'agency'
+    tier = db.Column(db.String(50), default='free', nullable=False)
     stripe_customer_id = db.Column(db.String(120), unique=True, index=True, nullable=True)
     stripe_subscription_id = db.Column(db.String(120), unique=True, index=True, nullable=True)
     subscription_active_until = db.Column(db.DateTime, nullable=True)
     
-    # Relationship to SavedLead (one-to-many: one User has many SavedLeads)
-    saved_leads = db.relationship('SavedLead', backref='owner', lazy='dynamic')
+    # Relationship to SavedLead (one User has many SavedLeads)
+    # 'owner' is how SavedLead can refer back to User.
+    # 'lazy="dynamic"' means saved_leads will be a query, not a list immediately.
+    saved_leads = db.relationship('SavedLead', backref='owner', lazy='dynamic', cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -31,26 +33,30 @@ class User(UserMixin, db.Model):
         return f'<User {self.username}>'
 
 class SavedLead(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    place_id_google = db.Column(db.String(255), nullable=False, index=True) # Google's Place ID
+    # This is the primary key for the SavedLead table itself
+    id = db.Column(db.Integer, primary_key=True) 
+    
+    place_id_google = db.Column(db.String(255), nullable=False, index=True)
     name_at_save = db.Column(db.String(255), nullable=False)
-    address_at_save = db.Column(db.String(500)) # Address can be long
+    address_at_save = db.Column(db.String(500))
     phone_at_save = db.Column(db.String(50))
     website_at_save = db.Column(db.String(500))
+    photo_url_google = db.Column(db.String(1024), nullable=True) # For storing Google's photo URL
     
-    user_status = db.Column(db.String(50), default='New', nullable=False) # e.g., New, Contacted, Booked
-    user_notes = db.Column(db.Text) # For longer notes from the user
+    user_status = db.Column(db.String(50), default='New', nullable=False)
+    user_notes = db.Column(db.Text)
     
     saved_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Foreign Key to link to the User who saved this lead
+    # --- THIS IS THE CRUCIAL FOREIGN KEY ---
+    # This links a SavedLead record to a specific User record.
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
     def __repr__(self):
-        return f'<SavedLead {self.name_at_save} for User {self.user_id}>'
+        return f'<SavedLead {self.name_at_save} for User ID {self.user_id}>'
 
-    def to_dict(self): # Helper method to convert object to dictionary for JSON response
+    def to_dict(self): 
         return {
             'id': self.id,
             'place_id_google': self.place_id_google,
@@ -58,9 +64,10 @@ class SavedLead(db.Model):
             'address_at_save': self.address_at_save,
             'phone_at_save': self.phone_at_save,
             'website_at_save': self.website_at_save,
+            'photo_url': self.photo_url_google, # Use 'photo_url' key for frontend consistency
             'user_status': self.user_status,
             'user_notes': self.user_notes,
-            'saved_at': self.saved_at.isoformat() + 'Z' if self.saved_at else None, # ISO format with Z for UTC
+            'saved_at': self.saved_at.isoformat() + 'Z' if self.saved_at else None,
             'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None,
             'user_id': self.user_id
         }
