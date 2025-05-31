@@ -1,19 +1,18 @@
 # app/routes.py
 from flask import Blueprint, request, jsonify, current_app
 from app import db
-from app.models import User, SavedLead # Ensure SavedLead is imported
-from werkzeug.security import generate_password_hash, check_password_hash # Used in auth
+from app.models import User, SavedLead 
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import login_user, logout_user, login_required, current_user
 
-# --- Imports for the new Search Blueprint ---
+# --- Imports for the Search Blueprint ---
 import requests 
 import time     
 import os       
 
-# --- Authentication Blueprint ---
+# --- Authentication Blueprint (MODIFIED TO INCLUDE TIER) ---
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
-# ... (All your existing @auth_bp routes - register, login, logout, status - NO CHANGES HERE) ...
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -21,17 +20,34 @@ def register():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
-    if not username or not email or not password: return jsonify(message="Username, email, and password are required"), 400
-    if User.query.filter_by(username=username).first(): return jsonify(message="Username already exists"), 409
-    if User.query.filter_by(email=email).first(): return jsonify(message="Email already registered"), 409
-    if len(password) < 8: return jsonify(message="Password must be at least 8 characters long"), 400
+
+    if not username or not email or not password: 
+        return jsonify(message="Username, email, and password are required"), 400
+    if User.query.filter_by(username=username).first(): 
+        return jsonify(message="Username already exists"), 409
+    if User.query.filter_by(email=email).first(): 
+        return jsonify(message="Email already registered"), 409
+    if len(password) < 8: 
+        return jsonify(message="Password must be at least 8 characters long"), 400
+    
+    # User model has default='free' for tier, so it will be set automatically
     new_user = User(username=username, email=email)
     new_user.set_password(password)
+    
     try:
         db.session.add(new_user)
         db.session.commit()
         login_user(new_user) 
-        return jsonify(message="User registered successfully", user={'id': new_user.id, 'username': new_user.username}), 201
+        # Include tier in the response
+        return jsonify(
+            message="User registered successfully", 
+            user={
+                'id': new_user.id, 
+                'username': new_user.username,
+                'email': new_user.email, # Good to return email too
+                'tier': new_user.tier   # new_user.tier will be 'free' by default
+            }
+        ), 201
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error during registration: {e}")
@@ -43,11 +59,24 @@ def login():
     if not data: return jsonify(message="No input data provided"), 400
     identifier = data.get('identifier')
     password = data.get('password')
-    if not identifier or not password: return jsonify(message="Username/email and password are required"), 400
+
+    if not identifier or not password: 
+        return jsonify(message="Username/email and password are required"), 400
+    
     user = User.query.filter((User.username == identifier) | (User.email == identifier)).first()
+
     if user and user.check_password(password):
         login_user(user, remember=data.get('remember', False))
-        return jsonify(message="Login successful", user={'id': current_user.id, 'username': current_user.username}), 200
+        # Include tier in the response
+        return jsonify(
+            message="Login successful", 
+            user={
+                'id': current_user.id, 
+                'username': current_user.username,
+                'email': current_user.email, # Good to return email
+                'tier': current_user.tier   # current_user.tier will have its value from DB
+            }
+        ), 200
     else:
         return jsonify(message="Invalid username/email or password"), 401
 
@@ -60,9 +89,16 @@ def logout():
 @auth_bp.route('/status', methods=['GET'])
 @login_required
 def status():
-    return jsonify(logged_in=True, user={'id': current_user.id, 'username': current_user.username, 'email': current_user.email}), 200
-
-
+    # Include tier in the response
+    return jsonify(
+        logged_in=True, 
+        user={
+            'id': current_user.id, 
+            'username': current_user.username, 
+            'email': current_user.email,
+            'tier': current_user.tier # Add the tier here
+        }
+    ), 200
 # --- Leads Blueprint ---
 leads_bp = Blueprint('leads', __name__, url_prefix='/api/leads')
 
