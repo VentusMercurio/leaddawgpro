@@ -52,6 +52,9 @@ def create_app(config_class=Config):
     from app.routes import search_bp  # <--- IMPORT search_bp
     app.register_blueprint(search_bp) # <--- REGISTER search_bp
 
+    from app.payment_routes import payments_bp 
+    app.register_blueprint(payments_bp)
+
     # --- Test and Index Routes (defined directly on app) ---
     @app.route('/test/')
     def test_page():
